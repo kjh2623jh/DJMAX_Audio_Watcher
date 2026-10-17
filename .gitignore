@@ -1,0 +1,23 @@
+# Binaries and build output
+*.exe
+*.test
+*.out
+/build/
+/dist/
+/release/
+svcl-x64.zip
+
+# Third-party binary (not committed; only bundled in complete free release package)
+svcl.exe
+
+# Local runtime data and logs
+*.log
+original-format.dat
+format-probe.dat
+*.tmp
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
