@@ -4,6 +4,6 @@ $env:GOOS = 'windows'
 $env:GOARCH = 'amd64'
 $env:CGO_ENABLED = '0'
 New-Item -ItemType Directory -Force -Path 'dist' | Out-Null
-go build -trimpath -ldflags '-H=windowsgui -s -w' -o 'dist/DJMAX_Audio_Watcher_v5.exe' .
+go build -trimpath -ldflags '-H=windowsgui -s -w' -o 'dist/DJMAX_Audio_Watcher.exe' .
 if ($LASTEXITCODE -ne 0) { throw 'go build failed' }
-Write-Host 'Built dist/DJMAX_Audio_Watcher_v5.exe'
+Write-Host 'Built dist/DJMAX_Audio_Watcher.exe'

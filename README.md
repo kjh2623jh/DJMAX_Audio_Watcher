@@ -4,6 +4,11 @@
 
 **DJMAX RESPECT V**가 실행되면 Windows 기본 출력 장치를 **48 kHz**로 변경하고, 게임이 종료되면 기존 출력 형식으로 복구하는 트레이 프로그램입니다.
 
+## 다운로드
+
+- **[최신 릴리스 보기](https://github.com/kjh2623jh/DJMAX_Audio_Watcher/releases/latest)** — 업데이트 내용과 배포 파일을 확인합니다.
+- **[Windows용 ZIP 바로 다운로드](https://github.com/kjh2623jh/DJMAX_Audio_Watcher/releases/latest/download/DJMAX_Audio_Watcher_Windows_x64.zip)** — 최신 배포 파일을 바로 내려받습니다.
+
 ## 개발 배경
 
 DJMAX RESPECT V에서 ASIO 오디오 출력을 사용할 때, 오디오 장치의 샘플레이트 설정에 따라 게임 외 다른 프로그램의 소리가 출력되지 않는 문제가 발생할 수 있습니다.
@@ -16,7 +21,7 @@ DJMAX RESPECT V에서 ASIO 오디오 출력을 사용할 때, 오디오 장치�
 
 ## 사용 방법
 
-1. GitHub Releases에서 통합 배포 ZIP을 내려받습니다.
+1. 위의 **Windows용 ZIP 바로 다운로드**에서 배포 파일을 내려받습니다.
 2. ZIP의 압축을 완전히 해제합니다. 압축된 파일들은 모두 같은 폴더에 두어야 합니다.
 3. 폴더 안의 실행 파일을 열고 Windows 관리자 권한 요청을 승인합니다.
 4. 실행 방법을 선택합니다.

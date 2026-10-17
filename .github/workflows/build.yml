@@ -26,8 +26,8 @@ jobs:
         run: .\package-release.ps1
       - uses: actions/upload-artifact@v4
         with:
-          name: DJMAX-Audio-Watcher-v5-Windows-x64-SVCL-1.28
-          path: release/DJMAX_Audio_Watcher_v5_Windows_x64_SVCL_1.28.zip
+          name: DJMAX-Audio-Watcher-Windows-x64
+          path: release/DJMAX_Audio_Watcher_Windows_x64.zip
           if-no-files-found: error
 
   release:
@@ -42,7 +42,7 @@ jobs:
       - name: Download Windows package
         uses: actions/download-artifact@v4
         with:
-          name: DJMAX-Audio-Watcher-v5-Windows-x64-SVCL-1.28
+          name: DJMAX-Audio-Watcher-Windows-x64
           path: release
       - name: Publish release
         shell: bash
@@ -50,7 +50,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG_NAME: ${{ github.ref_name }}
-          ASSET_PATH: release/DJMAX_Audio_Watcher_v5_Windows_x64_SVCL_1.28.zip
+          ASSET_PATH: release/DJMAX_Audio_Watcher_Windows_x64.zip
         run: |
           set -euo pipefail
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then

@@ -12,7 +12,7 @@ Copy-Item -LiteralPath (Join-Path $root 'install_svcl.ps1') -Destination $dist -
 Copy-Item -LiteralPath (Join-Path $root 'THIRD_PARTY_NOTICES.md') -Destination $dist -Force
 $releaseDir = Join-Path $root 'release'
 New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
-$out = Join-Path $releaseDir 'DJMAX_Audio_Watcher_v5_Windows_x64_SVCL_1.28.zip'
+$out = Join-Path $releaseDir 'DJMAX_Audio_Watcher_Windows_x64.zip'
 if (Test-Path -LiteralPath $out) { Remove-Item -LiteralPath $out -Force }
 Compress-Archive -Path (Join-Path $dist '*') -DestinationPath $out -CompressionLevel Optimal
 Write-Host "Release package: $out"
