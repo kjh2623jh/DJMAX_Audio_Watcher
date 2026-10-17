@@ -24,9 +24,6 @@ const (
 	appDirName                        = "DJMAXAudioWatcher"
 	gameName                          = "DJMAX RESPECT V.exe"
 	device                            = "DefaultRenderDevice"
-	mutexName                         = "Local\\DJMAXAudioWatcherV5_Mutex"
-	eventName                         = "Local\\DJMAXAudioWatcherV5_Stop"
-	taskName                          = "DJMAXAudioWatcherV2"
 	ERROR_ALREADY_EXISTS              = 183
 	TH32CS_SNAPPROCESS                = 0x00000002
 	PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
@@ -48,7 +45,6 @@ var (
 	user32                  = syscall.NewLazyDLL("user32.dll")
 	shell32                 = syscall.NewLazyDLL("shell32.dll")
 	procCreateMutex         = kernel32.NewProc("CreateMutexW")
-	procOpenMutex           = kernel32.NewProc("OpenMutexW")
 	procCreateEvent         = kernel32.NewProc("CreateEventW")
 	procOpenEvent           = kernel32.NewProc("OpenEventW")
 	procSetEvent            = kernel32.NewProc("SetEvent")
@@ -107,7 +103,7 @@ func closeHandle(h uintptr) {
 	}
 }
 func msg(text string, flags uintptr) uintptr {
-	r, _, _ := procMessageBox.Call(0, uintptr(unsafe.Pointer(wide(text))), uintptr(unsafe.Pointer(wide("DJMAX Audio Watcher v5"))), flags)
+	r, _, _ := procMessageBox.Call(0, uintptr(unsafe.Pointer(wide(text))), uintptr(unsafe.Pointer(wide(appTitle()))), flags)
 	return r
 }
 func elevated() bool { r, _, _ := procIsUserAnAdmin.Call(); return r != 0 }
@@ -344,8 +340,8 @@ func (a *app) restore(reason string) bool {
 }
 
 const wmiScript = `$ErrorActionPreference = 'Stop'
-$start = 'DJMAXWatcherV5.Start'
-$stop = 'DJMAXWatcherV5.Stop'
+$start = 'DJMAXWatcher.Start'
+$stop = 'DJMAXWatcher.Stop'
 try {
   Register-WmiEvent -Query 'SELECT * FROM Win32_ProcessStartTrace' -SourceIdentifier $start | Out-Null
   Register-WmiEvent -Query 'SELECT * FROM Win32_ProcessStopTrace' -SourceIdentifier $stop | Out-Null
@@ -514,12 +510,39 @@ func (a *app) reconcile(reason string) bool {
 	return false
 }
 
+func psQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
+}
+
+func allTaskNames() []string {
+	names := make([]string, 0, 1+len(legacyTaskNames))
+	names = append(names, taskName)
+	names = append(names, legacyTaskNames...)
+	return names
+}
+
+func unregisterTasksScript(names []string) string {
+	commands := make([]string, 0, len(names))
+	for _, name := range names {
+		commands = append(commands, "Unregister-ScheduledTask -TaskName "+psQuote(name)+" -Confirm:$false -ErrorAction SilentlyContinue")
+	}
+	return strings.Join(commands, "; ")
+}
+
 func taskScript(install bool, exe string) string {
 	if !install {
-		return "Unregister-ScheduledTask -TaskName '" + taskName + "' -Confirm:$false -ErrorAction SilentlyContinue"
+		return unregisterTasksScript(allTaskNames())
 	}
-	quoted := strings.ReplaceAll(exe, "'", "''")
-	return fmt.Sprintf("$a=New-ScheduledTaskAction -Execute '%s' -Argument '--startup'; $t=New-ScheduledTaskTrigger -AtLogOn -User ([Security.Principal.WindowsIdentity]::GetCurrent().Name); $p=New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Highest; Register-ScheduledTask -TaskName '%s' -Action $a -Trigger $t -Principal $p -Force | Out-Null", quoted, taskName)
+	register := fmt.Sprintf("$ErrorActionPreference='Stop'; $a=New-ScheduledTaskAction -Execute %s -Argument '--startup'; $t=New-ScheduledTaskTrigger -AtLogOn -User ([Security.Principal.WindowsIdentity]::GetCurrent().Name); $p=New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Highest; Register-ScheduledTask -TaskName %s -Action $a -Trigger $t -Principal $p -Force | Out-Null", psQuote(exe), psQuote(taskName))
+	return register + "; " + unregisterTasksScript(legacyTaskNames)
+}
+
+func startupStateScript() string {
+	quoted := make([]string, 0, len(allTaskNames()))
+	for _, name := range allTaskNames() {
+		quoted = append(quoted, psQuote(name))
+	}
+	return "$found=$false; @(" + strings.Join(quoted, ",") + ") | ForEach-Object { $t=Get-ScheduledTask -TaskName $_ -ErrorAction SilentlyContinue; if($null -ne $t -and $t.State -ne 'Disabled') { $found=$true } }; if($found) { 'YES' }"
 }
 func setStartup(install bool, exe string) error {
 	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", taskScript(install, exe))
@@ -545,28 +568,14 @@ func main() {
 		}
 		return
 	}
-	// Previous versions use distinct mutex names. Never let two versions
-	// reconfigure the same audio endpoint concurrently.
-	for _, old := range []struct{ version, mutex string }{
-		{"v2", "Local\\DJMAXAudioWatcherV2_Mutex"},
-		{"v3", "Local\\DJMAXAudioWatcherV3_Mutex"},
-		{"v4", "Local\\DJMAXAudioWatcherV4_Mutex"},
-	} {
-		h, _, _ := procOpenMutex.Call(SYNCHRONIZE, 0, uintptr(unsafe.Pointer(wide(old.mutex))))
-		if h != 0 {
-			closeHandle(h)
-			msg("이전 버전("+old.version+")이 실행 중입니다.\n트레이 메뉴 또는 기존 EXE에서 정상 종료한 뒤 v5를 실행해 주세요.", MB_ICONERROR)
-			return
-		}
-	}
-	// A second invocation only sends a graceful stop signal to the existing instance.
+	// The primary identity is version-independent so all future releases share it.
 	mh, _, e := procCreateMutex.Call(0, 0, uintptr(unsafe.Pointer(wide(mutexName))))
 	if mh == 0 {
 		msg("단일 실행 잠금 생성 실패: "+e.Error(), MB_ICONERROR)
 		return
 	}
-	defer closeHandle(mh)
 	if e == syscall.Errno(ERROR_ALREADY_EXISTS) {
+		closeHandle(mh)
 		if msg("이미 DJMAX 감시 프로그램이 실행 중입니다.\n기존 프로그램을 정상 종료할까요?", MB_YESNO|MB_ICONQUESTION) == IDYES {
 			eh, _, er := procOpenEvent.Call(EVENT_MODIFY_STATE, 0, uintptr(unsafe.Pointer(wide(eventName))))
 			if eh == 0 {
@@ -577,6 +586,29 @@ func main() {
 			}
 		}
 		return
+	}
+	heldMutexes := []uintptr{mh}
+	defer func() {
+		for _, handle := range heldMutexes {
+			closeHandle(handle)
+		}
+	}()
+
+	// Hold every legacy mutex as an alias. This prevents both launch orders:
+	// an old process blocks this one, and an old process started later sees its
+	// own mutex already occupied by this one.
+	for _, legacy := range legacyInstances {
+		h, _, legacyErr := procCreateMutex.Call(0, 0, uintptr(unsafe.Pointer(wide(legacy.mutex))))
+		if h == 0 {
+			msg("호환용 단일 실행 잠금 생성 실패: "+legacyErr.Error(), MB_ICONERROR)
+			return
+		}
+		if legacyErr == syscall.Errno(ERROR_ALREADY_EXISTS) {
+			closeHandle(h)
+			msg("이전 버전("+legacy.version+")이 실행 중입니다.\n기존 프로그램을 정상 종료한 뒤 "+appTitle()+"을 실행해 주세요.", MB_ICONERROR)
+			return
+		}
+		heldMutexes = append(heldMutexes, h)
 	}
 	if len(args) > 0 && args[0] == "--uninstall" {
 		if err := setStartup(false, exe); err != nil {
@@ -594,12 +626,24 @@ func main() {
 		}
 		return
 	}
-	eh, _, er := procCreateEvent.Call(0, 1, 0, uintptr(unsafe.Pointer(wide(eventName))))
-	if eh == 0 {
-		msg("종료 이벤트 생성 실패: "+er.Error(), MB_ICONERROR)
-		return
+	eventNames := []string{eventName}
+	for _, legacy := range legacyInstances {
+		eventNames = append(eventNames, legacy.event)
 	}
-	defer closeHandle(eh)
+	stopEventHandles := make([]uintptr, 0, len(eventNames))
+	defer func() {
+		for _, handle := range stopEventHandles {
+			closeHandle(handle)
+		}
+	}()
+	for _, name := range eventNames {
+		eh, _, eventErr := procCreateEvent.Call(0, 1, 0, uintptr(unsafe.Pointer(wide(name))))
+		if eh == 0 {
+			msg("종료 이벤트 생성 실패: "+eventErr.Error(), MB_ICONERROR)
+			return
+		}
+		stopEventHandles = append(stopEventHandles, eh)
+	}
 	svcl := filepath.Join(filepath.Dir(exe), "svcl.exe")
 	if _, err := os.Stat(svcl); err != nil {
 		msg("svcl.exe를 감시 프로그램과 같은 폴더에 넣어 주세요.\n\n"+svcl, MB_ICONERROR)
@@ -617,7 +661,7 @@ func main() {
 	}
 	defer logFile.Close()
 	a := &app{log: log.New(logFile, "", log.Ldate|log.Ltime), logFile: logFile, svcl: svcl, backup: filepath.Join(dataDir, "original-format.dat"), dataDir: dataDir, currentIDs: make(map[uint32]bool), tracked: make(map[uint32]bool)}
-	a.log.Printf("Watcher v5 started: WMI START + kernel process-handle EXIT (event driven)")
+	a.log.Printf("%s started: WMI START + kernel process-handle EXIT (event driven)", appTitle())
 	// Every manual launch offers a choice. Scheduled login launches are silent.
 	// 'Run once' disables a previously registered startup task too.
 	if len(args) == 0 {
@@ -645,7 +689,10 @@ func main() {
 	a.watchCurrent(events) // also handle DJMAX already running before watcher starts
 	go listenWMI(ctx, a, events)
 	stop := make(chan struct{}, 1)
-	go func() { procWaitForSingleObject.Call(eh, INFINITE); stop <- struct{}{} }()
+	for _, handle := range stopEventHandles {
+		h := handle
+		go func() { procWaitForSingleObject.Call(h, INFINITE); stop <- struct{}{} }()
+	}
 	var settle *time.Timer
 	var settleC <-chan time.Time
 	schedule := func(d time.Duration) {

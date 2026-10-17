@@ -23,7 +23,9 @@ jobs:
         run: go test ./...
       - name: Build and package pinned SVCL 1.28
         shell: pwsh
-        run: .\package-release.ps1
+        env:
+          APP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}
+        run: .\package-release.ps1 -Version $env:APP_VERSION
       - uses: actions/upload-artifact@v4
         with:
           name: DJMAX-Audio-Watcher-Windows-x64

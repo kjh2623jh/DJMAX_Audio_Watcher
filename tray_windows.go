@@ -144,7 +144,7 @@ func (t *trayContext) status() {
 	if t.startup.Load() {
 		auto = "켜짐"
 	}
-	msg("DJMAX Audio Watcher v5\n\n상태: "+state+"\n로그인 자동 실행: "+auto+"\n\n트레이 아이콘을 우클릭하면 설정 및 종료가 가능합니다.", 0)
+	msg(appTitle()+"\n\n상태: "+state+"\n로그인 자동 실행: "+auto+"\n\n트레이 아이콘을 우클릭하면 설정 및 종료가 가능합니다.", 0)
 }
 func (t *trayContext) menu() {
 	menu, _, _ := pCreatePopupMenu.Call()
@@ -200,7 +200,7 @@ func trayAutoStartState() bool {
 	cmd := syscall.StringToUTF16Ptr // keep syscall dependency on windows
 	_ = cmd
 	// Query only once at startup, not on every popup menu.
-	out, err := runPowerShellOutput("$t=Get-ScheduledTask -TaskName '" + taskName + "' -ErrorAction SilentlyContinue; if($null -ne $t -and $t.State -ne 'Disabled') { 'YES' }")
+	out, err := runPowerShellOutput(startupStateScript())
 	return err == nil && strings.Contains(out, "YES")
 }
 func runTray(logPath, exe string, stop chan<- struct{}, logger *log.Logger, running *atomic.Bool, initialStartup bool) {
@@ -212,7 +212,7 @@ func runTray(logPath, exe string, stop chan<- struct{}, logger *log.Logger, runn
 	trayCallback = syscall.NewCallback(trayWindowProc)
 	hinst, _, _ := pGetModuleHandle.Call(0)
 	icon, _, _ := pLoadIcon.Call(0, 32516) // IDI_INFORMATION: built-in Windows icon
-	className := wide("DJMAXAudioWatcherV5TrayWindow")
+	className := wide(trayWindowClassName)
 	wc := trayClass{size: uint32(unsafe.Sizeof(trayClass{})), wndProc: trayCallback, instance: hinst, icon: icon, className: className}
 	atom, _, err := pRegisterClass.Call(uintptr(unsafe.Pointer(&wc)))
 	if atom == 0 {
@@ -232,7 +232,7 @@ func runTray(logPath, exe string, stop chan<- struct{}, logger *log.Logger, runn
 	n.flags = nifMessage | nifIcon | nifTip
 	n.callbackMessage = wmApp + 11
 	n.icon = icon
-	copy(n.tip[:], syscall.StringToUTF16("DJMAX Audio Watcher v5 - 우클릭: 설정 / 종료"))
+	copy(n.tip[:], syscall.StringToUTF16(appTitle()+" - 우클릭: 설정 / 종료"))
 	ok, _, err := pShellNotify.Call(nidAdd, uintptr(unsafe.Pointer(&n)))
 	if ok == 0 {
 		logger.Printf("ERROR Shell_NotifyIconW NIM_ADD: %v", err)

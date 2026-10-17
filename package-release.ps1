@@ -1,8 +1,12 @@
 # Build a complete free distribution ZIP with the pinned, original NirSoft SVCL 1.28 files.
 # Requires internet access to https://www.nirsoft.net/ on the Windows build machine.
+param(
+    [string]$Version = ''
+)
+
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
-& (Join-Path $root 'build.ps1')
+& (Join-Path $root 'build.ps1') -Version $Version
 if ($LASTEXITCODE -ne 0) { throw 'Watcher build failed' }
 $dist = Join-Path $root 'dist'
 & (Join-Path $root 'install_svcl.ps1') -Destination $dist
